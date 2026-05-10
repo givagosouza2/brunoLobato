@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from scipy.signal import detrend
 
 st.set_page_config(page_title="Norma Euclidiana FaceMesh", layout="wide")
 
@@ -35,12 +36,12 @@ if arquivo is not None:
     normas[tempo_col] = tempo
 
     for i in range(n_pontos):
-        x = df.iloc[:, 2 + 3*i]
-        y = df.iloc[:, 2 + 3*i + 1]
-        z = df.iloc[:, 2 + 3*i + 2]
+        x = detrend(df.iloc[:, 2 + 3*i].values)
+        y = detrend(df.iloc[:, 2 + 3*i + 1].values)
+        z = detrend(df.iloc[:, 2 + 3*i + 2].values)
 
-        normas[f"Pt{i}_norma"] = np.sqrt(x**2 + y**2 + z**2)
-
+    normas[f"Pt{i}_norma"] = np.sqrt(x**2 + y**2 + z**2)
+    
     st.subheader("Selecionar pontos para visualização")
 
     pontos = [f"Pt{i}_norma" for i in range(n_pontos)]
