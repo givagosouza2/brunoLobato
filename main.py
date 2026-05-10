@@ -49,7 +49,7 @@ if arquivo is not None and arquivo_parametros is not None:
     n_pontos = len(coord_cols) // 3
     st.success(f"Foram identificados {n_pontos} pontos tridimensionais.")
 
-    unidade_tempo = st.radio("Unidade da coluna de tempo", ["segundos", "milissegundos"], horizontal=True)
+    unidade_tempo = True
 
     janela_ms = 1000
 
