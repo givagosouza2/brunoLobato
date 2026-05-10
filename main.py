@@ -19,15 +19,6 @@ if arquivo is not None and arquivo_parametros is not None:
     df.columns = df.columns.str.strip().str.replace("\ufeff", "", regex=False)
     parametros.columns = parametros.columns.str.strip().str.replace("\ufeff", "", regex=False)
 
-    #st.subheader("Pré-visualização dos dados principais")
-    #st.dataframe(df.head())
-
-    #st.subheader("Pré-visualização dos parâmetros normativos")
-    #st.dataframe(parametros.head())
-
-    #st.write("Colunas detectadas no arquivo normativo:")
-    #st.write(parametros.columns.tolist())
-
     if not any(col.lower() == "level" for col in parametros.columns):
         st.error(f"Coluna 'Level' não encontrada. Colunas detectadas: {parametros.columns.tolist()}")
         st.stop()
@@ -50,9 +41,7 @@ if arquivo is not None and arquivo_parametros is not None:
     st.success(f"Foram identificados {n_pontos} pontos tridimensionais.")
 
     unidade_tempo = True
-
     janela_ms = 1000
-
     usar_detrend = True
 
     tempo = df[tempo_col].astype(float).values
@@ -329,6 +318,11 @@ if arquivo is not None and arquivo_parametros is not None:
 
     usar_tempo = st.radio("Eixo X", ["Tempo", "Frame"], horizontal=True)
 
+    mostrar_linhas_niveis = st.checkbox(
+        "Mostrar linhas horizontais dos níveis normativos",
+        value=True
+    )
+
     eixo_x = tempo_col if usar_tempo == "Tempo" else frame_col
 
     if pontos_selecionados:
@@ -345,6 +339,69 @@ if arquivo is not None and arquivo_parametros is not None:
                 )
             )
 
+        if mostrar_linhas_niveis and len(pontos_selecionados) == 1:
+
+            ponto_ref = pontos_selecionados[0]
+
+            if ponto_ref in parametros.columns:
+
+                try:
+                    lim_2sd = float(
+                        parametros.loc[
+                            parametros[level_col].astype(str).str.strip() == "Mean + 2 SD",
+                            ponto_ref
+                        ].values[0]
+                    )
+
+                    lim_3sd = float(
+                        parametros.loc[
+                            parametros[level_col].astype(str).str.strip() == "Mean + 3 SD",
+                            ponto_ref
+                        ].values[0]
+                    )
+
+                    lim_4sd = float(
+                        parametros.loc[
+                            parametros[level_col].astype(str).str.strip() == "Mean + 4 SD",
+                            ponto_ref
+                        ].values[0]
+                    )
+
+                    lim_5sd = float(
+                        parametros.loc[
+                            parametros[level_col].astype(str).str.strip() == "Mean + 5 SD",
+                            ponto_ref
+                        ].values[0]
+                    )
+
+                    niveis = [
+                        (lim_2sd, "Mean + 2 SD"),
+                        (lim_3sd, "Mean + 3 SD"),
+                        (lim_4sd, "Mean + 4 SD"),
+                        (lim_5sd, "Mean + 5 SD")
+                    ]
+
+                    for valor, nome in niveis:
+                        fig.add_hline(
+                            y=valor,
+                            line_dash="dash",
+                            annotation_text=nome,
+                            annotation_position="top right"
+                        )
+
+                except Exception as e:
+                    st.warning(f"Não foi possível adicionar os níveis normativos: {e}")
+
+            else:
+                st.warning(f"O ponto {ponto_ref} não foi encontrado no arquivo normativo.")
+
+        elif mostrar_linhas_niveis and len(pontos_selecionados) > 1:
+
+            st.info(
+                "As linhas normativas são mostradas apenas quando um único ponto é selecionado, "
+                "pois cada ponto possui limites próprios."
+            )
+
         y_label = "Norma após autozero + detrend" if usar_detrend else "Norma após autozero"
 
         fig.update_layout(
@@ -356,13 +413,7 @@ if arquivo is not None and arquivo_parametros is not None:
 
         st.plotly_chart(fig, use_container_width=True)
 
-    #st.subheader("Ranking dos pontos")
-
     rms_df_ordenado = rms_df.sort_values("RMS_norma", ascending=False)
-    #st.dataframe(rms_df_ordenado)
-
-    #st.subheader("Tabela das normas")
-    #st.dataframe(normas)
 
     csv_normas = normas.to_csv(index=False).encode("utf-8")
     csv_rms = rms_df_ordenado.to_csv(index=False).encode("utf-8")
