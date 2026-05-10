@@ -30,7 +30,6 @@ if arquivo is not None:
         st.stop()
 
     n_pontos = len(coord_cols) // 3
-
     st.success(f"Foram identificados {n_pontos} pontos tridimensionais.")
 
     unidade_tempo = st.radio(
@@ -45,6 +44,11 @@ if arquivo is not None:
         max_value=1000,
         value=50,
         step=1
+    )
+
+    usar_detrend = st.checkbox(
+        "Aplicar detrend após autozero",
+        value=True
     )
 
     tempo = df[tempo_col].astype(float).values
@@ -91,11 +95,16 @@ if arquivo is not None:
         y_autozero = pd.Series(y_autozero).interpolate().bfill().ffill().values
         z_autozero = pd.Series(z_autozero).interpolate().bfill().ffill().values
 
-        x = detrend(x_autozero)
-        y = detrend(y_autozero)
-        z = detrend(z_autozero)
+        if usar_detrend:
+            x_proc = detrend(x_autozero)
+            y_proc = detrend(y_autozero)
+            z_proc = detrend(z_autozero)
+        else:
+            x_proc = x_autozero
+            y_proc = y_autozero
+            z_proc = z_autozero
 
-        norma = np.sqrt(x**2 + y**2 + z**2)
+        norma = np.sqrt(x_proc**2 + y_proc**2 + z_proc**2)
 
         normas[f"Pt{i}_norma"] = norma
 
@@ -191,10 +200,15 @@ if arquivo is not None:
                 )
             )
 
+        if usar_detrend:
+            y_label = "Norma euclidiana após autozero e detrend"
+        else:
+            y_label = "Norma euclidiana após autozero"
+
         fig.update_layout(
             height=650,
             xaxis_title=eixo_x,
-            yaxis_title="Norma euclidiana após autozero e detrend",
+            yaxis_title=y_label,
             margin=dict(l=40, r=20, t=40, b=40)
         )
 
