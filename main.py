@@ -6,7 +6,7 @@ from scipy.signal import detrend
 
 st.set_page_config(page_title="Norma Euclidiana FaceMesh", layout="wide")
 
-st.title("Análise das normas euclidianas dos pontos 3D")
+st.title("Análise dos deslocamentos euclidianos dos pontos 2D")
 
 arquivo = st.file_uploader("Carregue o arquivo principal CSV", type=["csv", "txt"])
 arquivo_parametros = st.file_uploader("Carregue o arquivo de parâmetros normativos", type=["csv", "txt"])
@@ -91,10 +91,13 @@ if arquivo is not None and arquivo_parametros is not None:
             y_proc = y_autozero
             z_proc = z_autozero
 
-        norma = np.sqrt(x_proc**2 + y_proc**2 + z_proc**2)
+        dx = np.diff(x_proc, prepend=x_proc[0])
+        dy = np.diff(y_proc, prepend=y_proc[0])
 
-        normas[f"Pt{i}_norma"] = norma
-        rms_pontos.append(np.sqrt(np.mean(norma**2)))
+        distancia_delta = np.sqrt(dx**2 + dy**2)
+
+        normas[f"Pt{i}_norma"] = distancia_delta
+        rms_pontos.append(np.sqrt(np.mean(distancia_delta**2)))
 
         x_medios.append(np.nanmean(x_original))
         y_medios.append(np.nanmean(y_original))
@@ -105,10 +108,10 @@ if arquivo is not None and arquivo_parametros is not None:
         "x_medio": x_medios,
         "y_medio": y_medios,
         "z_medio": z_medios,
-        "RMS_norma": rms_pontos
+        "RMS_distancia_delta": rms_pontos
     })
 
-    st.subheader("Comparação normativa por amostras da norma")
+    st.subheader("Comparação normativa por amostras da distância euclidiana frame-a-frame")
 
     classes_desvio = []
     descricoes_desvio = []
@@ -265,7 +268,7 @@ if arquivo is not None and arquivo_parametros is not None:
             customdata=np.stack(
                 [
                     rms_df["ponto"],
-                    rms_df["RMS_norma"],
+                    rms_df["RMS_distancia_delta"],
                     rms_df["interpretação"],
                     rms_df["%_<2DP"],
                     rms_df["%_2a3DP"],
@@ -277,7 +280,7 @@ if arquivo is not None and arquivo_parametros is not None:
             ),
             hovertemplate=(
                 "Ponto: %{customdata[0]}<br>"
-                "RMS: %{customdata[1]:.6f}<br>"
+                "RMS distância delta: %{customdata[1]:.6f}<br>"
                 "Classificação: %{customdata[2]}<br>"
                 "% <2DP: %{customdata[3]:.1f}%<br>"
                 "% 2–3DP: %{customdata[4]:.1f}%<br>"
@@ -404,7 +407,7 @@ if arquivo is not None and arquivo_parametros is not None:
                 "pois cada ponto possui limites próprios."
             )
 
-        y_label = "Norma após autozero + detrend" if usar_detrend else "Norma após autozero"
+        y_label = "Distância euclidiana frame-a-frame após autozero + detrend"
 
         fig.update_layout(
             height=650,
@@ -415,7 +418,7 @@ if arquivo is not None and arquivo_parametros is not None:
 
         st.plotly_chart(fig, use_container_width=True)
 
-    rms_df_ordenado = rms_df.sort_values("RMS_norma", ascending=False)
+    rms_df_ordenado = rms_df.sort_values("RMS_distancia_delta", ascending=False)
 
     csv_normas = normas.to_csv(index=False).encode("utf-8")
     csv_rms = rms_df_ordenado.to_csv(index=False).encode("utf-8")
@@ -424,9 +427,9 @@ if arquivo is not None and arquivo_parametros is not None:
 
     with col1:
         st.download_button(
-            label="Baixar normas",
+            label="Baixar distâncias delta",
             data=csv_normas,
-            file_name="normas.csv",
+            file_name="distancias_delta.csv",
             mime="text/csv"
         )
 
