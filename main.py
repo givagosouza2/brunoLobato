@@ -8,14 +8,26 @@ st.set_page_config(page_title="Norma Euclidiana FaceMesh", layout="wide")
 
 st.title("Análise das normas euclidianas dos pontos 3D")
 
-arquivo = st.file_uploader("Carregue o arquivo CSV", type=["csv", "txt"])
+arquivo = st.file_uploader(
+    "Carregue o arquivo principal CSV",
+    type=["csv", "txt"]
+)
 
-if arquivo is not None:
+arquivo_parametros = st.file_uploader(
+    "Carregue o arquivo de parâmetros normativos",
+    type=["csv", "txt"]
+)
+
+if arquivo is not None and arquivo_parametros is not None:
 
     df = pd.read_csv(arquivo, sep=None, engine="python")
+    parametros = pd.read_csv(arquivo_parametros, sep=None, engine="python")
 
-    st.subheader("Pré-visualização dos dados")
+    st.subheader("Pré-visualização dos dados principais")
     st.dataframe(df.head())
+
+    st.subheader("Pré-visualização dos parâmetros normativos")
+    st.dataframe(parametros.head())
 
     frame_col = df.columns[0]
     tempo_col = df.columns[1]
@@ -30,6 +42,7 @@ if arquivo is not None:
         st.stop()
 
     n_pontos = len(coord_cols) // 3
+
     st.success(f"Foram identificados {n_pontos} pontos tridimensionais.")
 
     unidade_tempo = st.radio(
@@ -123,12 +136,95 @@ if arquivo is not None:
         "RMS_norma": rms_pontos
     })
 
-    st.subheader("Máscara dos pontos colorida pelo RMS da norma")
+    st.subheader("Comparação com limites normativos")
 
-    mostrar_numeros = st.checkbox("Mostrar número dos pontos na máscara", value=False)
+    if "Level" not in parametros.columns:
+        st.error("O arquivo de parâmetros precisa ter uma coluna chamada 'Level'.")
+        st.stop()
+
+    classes_desvio = []
+    descricoes_desvio = []
+
+    for i in range(n_pontos):
+
+        ponto_col = f"Pt{i}_norma"
+        rms_valor = rms_pontos[i]
+
+        if ponto_col not in parametros.columns:
+            st.error(f"A coluna {ponto_col} não foi encontrada no arquivo de parâmetros.")
+            st.stop()
+
+        lim_2sd = parametros.loc[
+            parametros["Level"] == "Mean + 2 SD",
+            ponto_col
+        ].values
+
+        lim_3sd = parametros.loc[
+            parametros["Level"] == "Mean + 3 SD",
+            ponto_col
+        ].values
+
+        lim_4sd = parametros.loc[
+            parametros["Level"] == "Mean + 4 SD",
+            ponto_col
+        ].values
+
+        lim_5sd = parametros.loc[
+            parametros["Level"] == "Mean + 5 SD",
+            ponto_col
+        ].values
+
+        if len(lim_2sd) == 0 or len(lim_3sd) == 0 or len(lim_4sd) == 0 or len(lim_5sd) == 0:
+            st.error(
+                "O arquivo de parâmetros precisa conter as linhas: "
+                "'Mean + 2 SD', 'Mean + 3 SD', 'Mean + 4 SD' e 'Mean + 5 SD'."
+            )
+            st.stop()
+
+        lim_2sd = float(lim_2sd[0])
+        lim_3sd = float(lim_3sd[0])
+        lim_4sd = float(lim_4sd[0])
+        lim_5sd = float(lim_5sd[0])
+
+        if rms_valor < lim_2sd:
+            classe = 0
+            descricao = "< 2 DP"
+        elif rms_valor < lim_3sd:
+            classe = 1
+            descricao = "≥ 2 DP"
+        elif rms_valor < lim_4sd:
+            classe = 2
+            descricao = "≥ 3 DP"
+        elif rms_valor < lim_5sd:
+            classe = 3
+            descricao = "≥ 4 DP"
+        else:
+            classe = 4
+            descricao = "≥ 5 DP"
+
+        classes_desvio.append(classe)
+        descricoes_desvio.append(descricao)
+
+    rms_df["classe_desvio"] = classes_desvio
+    rms_df["interpretação"] = descricoes_desvio
+
+    st.subheader("Máscara colorida por desvio em relação ao padrão normativo")
+
+    mostrar_numeros = st.checkbox(
+        "Mostrar número dos pontos na máscara",
+        value=False
+    )
 
     texto_pontos = [str(i) for i in range(n_pontos)] if mostrar_numeros else None
     modo = "markers+text" if mostrar_numeros else "markers"
+
+    corescale_custom = [
+        [0.00, "blue"],
+        [0.25, "green"],
+        [0.50, "yellow"],
+        [0.75, "orange"],
+        [1.00, "red"]
+    ]
 
     fig_mask = go.Figure()
 
@@ -138,26 +234,47 @@ if arquivo is not None:
             y=rms_df["y_medio"],
             mode=modo,
             marker=dict(
-                size=8,
-                color=rms_df["RMS_norma"],
-                colorscale="Turbo",
-                colorbar=dict(title="RMS"),
+                size=10,
+                color=rms_df["classe_desvio"],
+                cmin=0,
+                cmax=4,
+                colorscale=corescale_custom,
+                colorbar=dict(
+                    title="Desvio",
+                    tickvals=[0, 1, 2, 3, 4],
+                    ticktext=[
+                        "< 2 DP",
+                        "≥ 2 DP",
+                        "≥ 3 DP",
+                        "≥ 4 DP",
+                        "≥ 5 DP"
+                    ]
+                ),
                 showscale=True
             ),
             text=texto_pontos,
             textposition="top center",
-            hovertext=rms_df["ponto"],
+            customdata=np.stack(
+                [
+                    rms_df["ponto"],
+                    rms_df["RMS_norma"],
+                    rms_df["interpretação"]
+                ],
+                axis=-1
+            ),
             hovertemplate=(
-                "Ponto: %{hovertext}<br>"
+                "Ponto: %{customdata[0]}<br>"
+                "RMS: %{customdata[1]:.6f}<br>"
+                "Classe: %{customdata[2]}<br>"
                 "X médio: %{x:.4f}<br>"
                 "Y médio: %{y:.4f}<br>"
-                "RMS: %{marker.color:.6f}<extra></extra>"
+                "<extra></extra>"
             )
         )
     )
 
     fig_mask.update_layout(
-        height=700,
+        height=750,
         xaxis_title="X médio",
         yaxis_title="Y médio",
         yaxis=dict(autorange="reversed"),
@@ -167,6 +284,21 @@ if arquivo is not None:
     fig_mask.update_yaxes(scaleanchor="x", scaleratio=1)
 
     st.plotly_chart(fig_mask, use_container_width=True)
+
+    st.subheader("Resumo dos pontos por classe de desvio")
+
+    resumo_classes = (
+        rms_df["interpretação"]
+        .value_counts()
+        .reindex(["< 2 DP", "≥ 2 DP", "≥ 3 DP", "≥ 4 DP", "≥ 5 DP"])
+        .fillna(0)
+        .astype(int)
+        .reset_index()
+    )
+
+    resumo_classes.columns = ["Classe", "Número de pontos"]
+
+    st.dataframe(resumo_classes)
 
     st.subheader("Selecionar pontos para visualização temporal")
 
@@ -224,8 +356,9 @@ if arquivo is not None:
 
     csv_normas = normas.to_csv(index=False).encode("utf-8")
     csv_rms = rms_df_ordenado.to_csv(index=False).encode("utf-8")
+    csv_resumo = resumo_classes.to_csv(index=False).encode("utf-8")
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.download_button(
@@ -237,8 +370,19 @@ if arquivo is not None:
 
     with col2:
         st.download_button(
-            label="Baixar RMS por ponto em CSV",
+            label="Baixar RMS e classes por ponto em CSV",
             data=csv_rms,
-            file_name="rms_norma_por_ponto.csv",
+            file_name="rms_classes_por_ponto.csv",
             mime="text/csv"
         )
+
+    with col3:
+        st.download_button(
+            label="Baixar resumo das classes em CSV",
+            data=csv_resumo,
+            file_name="resumo_classes_desvio.csv",
+            mime="text/csv"
+        )
+
+else:
+    st.info("Carregue o arquivo principal e o arquivo de parâmetros normativos para iniciar.")
