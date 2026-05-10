@@ -356,13 +356,13 @@ if arquivo is not None and arquivo_parametros is not None:
 
         st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Ranking dos pontos")
+    #st.subheader("Ranking dos pontos")
 
     rms_df_ordenado = rms_df.sort_values("RMS_norma", ascending=False)
-    st.dataframe(rms_df_ordenado)
+    #st.dataframe(rms_df_ordenado)
 
-    st.subheader("Tabela das normas")
-    st.dataframe(normas)
+    #st.subheader("Tabela das normas")
+    #st.dataframe(normas)
 
     csv_normas = normas.to_csv(index=False).encode("utf-8")
     csv_rms = rms_df_ordenado.to_csv(index=False).encode("utf-8")
