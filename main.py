@@ -181,22 +181,24 @@ if arquivo is not None and arquivo_parametros is not None:
         n_4a5dp = np.sum((serie_norma >= lim_4sd) & (serie_norma < lim_5sd))
         n_maior_5dp = np.sum(serie_norma >= lim_5sd)
 
-        lista_contagens = [
-            n_menor_2dp,
+        contagens_acima_basal = [
             n_2a3dp,
             n_3a4dp,
             n_4a5dp,
             n_maior_5dp
         ]
 
-        classe = int(np.argmax(lista_contagens))
+        if np.sum(contagens_acima_basal) == 0:
+            classe = 0
+        else:
+            classe = int(np.argmax(contagens_acima_basal)) + 1
 
         descricoes = [
-            "< 2 DP",
-            "2–3 DP",
-            "3–4 DP",
-            "4–5 DP",
-            "≥ 5 DP"
+            "Basal: nenhum valor ≥ 2 DP",
+            "2–3 DP dominante",
+            "3–4 DP dominante",
+            "4–5 DP dominante",
+            "≥ 5 DP dominante"
         ]
 
         classes_desvio.append(classe)
@@ -223,7 +225,7 @@ if arquivo is not None and arquivo_parametros is not None:
     for k, v in percentuais.items():
         rms_df[k] = v
 
-    st.subheader("Máscara colorida pelo estrato dominante")
+    st.subheader("Máscara colorida pelo estrato dominante acima do basal")
 
     mostrar_numeros = st.checkbox("Mostrar número dos pontos", value=False)
 
@@ -252,9 +254,9 @@ if arquivo is not None and arquivo_parametros is not None:
                 cmax=4,
                 colorscale=corescale_custom,
                 colorbar=dict(
-                    title="Estrato dominante",
+                    title="Classificação",
                     tickvals=[0, 1, 2, 3, 4],
-                    ticktext=["<2DP", "2–3DP", "3–4DP", "4–5DP", "≥5DP"]
+                    ticktext=["Basal", "2–3DP", "3–4DP", "4–5DP", "≥5DP"]
                 ),
                 showscale=True
             ),
@@ -276,7 +278,7 @@ if arquivo is not None and arquivo_parametros is not None:
             hovertemplate=(
                 "Ponto: %{customdata[0]}<br>"
                 "RMS: %{customdata[1]:.6f}<br>"
-                "Estrato dominante: %{customdata[2]}<br>"
+                "Classificação: %{customdata[2]}<br>"
                 "% <2DP: %{customdata[3]:.1f}%<br>"
                 "% 2–3DP: %{customdata[4]:.1f}%<br>"
                 "% 3–4DP: %{customdata[5]:.1f}%<br>"
@@ -301,9 +303,9 @@ if arquivo is not None and arquivo_parametros is not None:
 
     st.plotly_chart(fig_mask, use_container_width=True)
 
-    st.subheader("Resumo dos estratos dominantes")
+    st.subheader("Resumo das classificações")
     resumo_classes = rms_df["interpretação"].value_counts().reset_index()
-    resumo_classes.columns = ["Estrato dominante", "Número de pontos"]
+    resumo_classes.columns = ["Classificação", "Número de pontos"]
     st.dataframe(resumo_classes)
 
     st.subheader("Visualização temporal")
