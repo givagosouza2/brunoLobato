@@ -19,14 +19,14 @@ if arquivo is not None and arquivo_parametros is not None:
     df.columns = df.columns.str.strip().str.replace("\ufeff", "", regex=False)
     parametros.columns = parametros.columns.str.strip().str.replace("\ufeff", "", regex=False)
 
-    %st.subheader("Pré-visualização dos dados principais")
-    %st.dataframe(df.head())
+    #st.subheader("Pré-visualização dos dados principais")
+    #st.dataframe(df.head())
 
-    %st.subheader("Pré-visualização dos parâmetros normativos")
-    %st.dataframe(parametros.head())
+    #st.subheader("Pré-visualização dos parâmetros normativos")
+    #st.dataframe(parametros.head())
 
-    %st.write("Colunas detectadas no arquivo normativo:")
-    %st.write(parametros.columns.tolist())
+    #st.write("Colunas detectadas no arquivo normativo:")
+    #st.write(parametros.columns.tolist())
 
     if not any(col.lower() == "level" for col in parametros.columns):
         st.error(f"Coluna 'Level' não encontrada. Colunas detectadas: {parametros.columns.tolist()}")
