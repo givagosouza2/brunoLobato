@@ -9,7 +9,7 @@ st.set_page_config(page_title="Norma Euclidiana FaceMesh", layout="wide")
 st.title("Análise dos deslocamentos euclidianos dos pontos 2D")
 
 arquivo = st.file_uploader("Carregue o arquivo principal CSV", type=["csv", "txt"])
-arquivo_parametros = st.file_uploader("Carregue o arquivo de parâmetros normativos", type=["csv", "txt"])
+arquivo_parametros = "Parameters.csv"
 
 if arquivo is not None and arquivo_parametros is not None:
 
