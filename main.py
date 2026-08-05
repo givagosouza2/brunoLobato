@@ -40,68 +40,137 @@ if arquivo is not None and arquivo_parametros is not None:
     n_pontos = len(coord_cols) // 3
     st.success(f"Foram identificados {n_pontos} pontos tridimensionais.")
 
-    unidade_tempo = True
-    janela_ms = 1000
-    usar_detrend = True
+    st.subheader("Normalização geométrica")
+
+    usar_procrustes = st.checkbox(
+        "Remover translação, rotação e escala global da face (Procrustes)",
+        value=True,
+        help=(
+            "Alinha cada frame a uma configuração facial de referência. "
+            "Isso reduz a influência da distância face-câmera e dos movimentos rígidos da cabeça."
+        )
+    )
+
+    unidade_tempo = st.selectbox("Unidade da coluna de tempo", ["segundos", "milissegundos"], index=0)
+    janela_ms = st.number_input("Janela inicial de referência (ms)", min_value=100, value=1000, step=100)
+    usar_detrend = st.checkbox("Aplicar detrend após o alinhamento", value=False)
+
+    pontos_ancora_texto = st.text_input(
+        "Pontos usados no alinhamento (opcional)",
+        value="",
+        help=(
+            "Deixe vazio para usar todos os pontos. Para reduzir a influência das expressões, "
+            "informe índices de pontos relativamente estáveis separados por vírgula."
+        )
+    )
 
     tempo = df[tempo_col].astype(float).values
-
-    janela_autozero = janela_ms / 1000 if unidade_tempo == "segundos" else janela_ms
-
+    janela_referencia = janela_ms / 1000.0 if unidade_tempo == "segundos" else float(janela_ms)
     tempo_inicial = tempo[0]
-    idx_autozero = tempo <= tempo_inicial + janela_autozero
+    idx_referencia = tempo <= tempo_inicial + janela_referencia
 
-    if np.sum(idx_autozero) < 2:
-        st.warning("A janela de autozero possui menos de 2 amostras.")
-        idx_autozero = np.arange(min(5, len(tempo)))
+    if np.sum(idx_referencia) < 2:
+        st.warning("A janela de referência possui menos de 2 amostras; serão usados os primeiros frames disponíveis.")
+        idx_referencia = np.arange(min(5, len(tempo)))
 
-    normas = pd.DataFrame()
-    normas[frame_col] = df[frame_col].values
-    normas[tempo_col] = tempo
+    def interpolar_coluna(valores):
+        return pd.Series(valores, dtype=float).interpolate(limit_direction="both").bfill().ffill().values
+
+    def alinhar_similaridade_2d(configuracao, referencia, indices_ancora):
+        """Alinha configuração à referência, removendo translação, rotação e escala isotrópica."""
+        movel = configuracao[indices_ancora]
+        fixa = referencia[indices_ancora]
+
+        centro_movel = np.mean(movel, axis=0)
+        centro_fixa = np.mean(fixa, axis=0)
+        movel_c = movel - centro_movel
+        fixa_c = fixa - centro_fixa
+
+        norma_movel = np.linalg.norm(movel_c)
+        norma_fixa = np.linalg.norm(fixa_c)
+
+        if norma_movel <= np.finfo(float).eps or norma_fixa <= np.finfo(float).eps:
+            return configuracao - centro_movel + centro_fixa, np.nan
+
+        h = movel_c.T @ fixa_c
+        u, _, vt = np.linalg.svd(h)
+        rotacao = u @ vt
+
+        # Impede reflexão da face durante o alinhamento.
+        if np.linalg.det(rotacao) < 0:
+            vt[-1, :] *= -1
+            rotacao = u @ vt
+
+        movel_rot = movel_c @ rotacao
+        escala = np.sum(movel_rot * fixa_c) / np.sum(movel_c ** 2)
+        alinhada = (configuracao - centro_movel) @ rotacao * escala + centro_fixa
+        return alinhada, escala
+
+    # Matriz: frames x pontos x coordenadas (X, Y, Z).
+    coordenadas = np.empty((len(df), n_pontos, 3), dtype=float)
+    for i in range(n_pontos):
+        for eixo in range(3):
+            valores = pd.to_numeric(df.iloc[:, 2 + 3*i + eixo], errors="coerce").values
+            coordenadas[:, i, eixo] = interpolar_coluna(valores)
+
+    try:
+        if pontos_ancora_texto.strip():
+            indices_ancora = sorted({int(v.strip()) for v in pontos_ancora_texto.split(",") if v.strip()})
+            if len(indices_ancora) < 3:
+                raise ValueError("Informe pelo menos três pontos de alinhamento.")
+            if min(indices_ancora) < 0 or max(indices_ancora) >= n_pontos:
+                raise ValueError(f"Os índices devem estar entre 0 e {n_pontos - 1}.")
+        else:
+            indices_ancora = list(range(n_pontos))
+    except ValueError as e:
+        st.error(f"Pontos de alinhamento inválidos: {e}")
+        st.stop()
+
+    # A referência é a forma média dos frames iniciais, centralizada e normalizada.
+    referencia_xy = np.nanmean(coordenadas[idx_referencia, :, :2], axis=0)
+    centro_ref = np.mean(referencia_xy[indices_ancora], axis=0)
+    referencia_xy = referencia_xy - centro_ref
+    tamanho_ref = np.linalg.norm(referencia_xy[indices_ancora])
+    if tamanho_ref <= np.finfo(float).eps:
+        st.error("Não foi possível construir uma referência facial válida.")
+        st.stop()
+    referencia_xy = referencia_xy / tamanho_ref
+
+    coordenadas_alinhadas = coordenadas.copy()
+    escalas = np.ones(len(df), dtype=float)
+
+    if usar_procrustes:
+        for frame in range(len(df)):
+            alinhada, escala = alinhar_similaridade_2d(
+                coordenadas[frame, :, :2], referencia_xy, indices_ancora
+            )
+            coordenadas_alinhadas[frame, :, :2] = alinhada
+            escalas[frame] = escala
+    else:
+        coordenadas_alinhadas[:, :, :2] = coordenadas[:, :, :2]
+
+    normas = pd.DataFrame({frame_col: df[frame_col].values, tempo_col: tempo})
+    normas["fator_escala_procrustes"] = escalas
 
     rms_pontos = []
-    x_medios = []
-    y_medios = []
-    z_medios = []
+    x_medios = np.mean(referencia_xy[:, 0]) + referencia_xy[:, 0]
+    y_medios = np.mean(referencia_xy[:, 1]) + referencia_xy[:, 1]
+    z_medios = np.nanmean(coordenadas[:, :, 2], axis=0)
 
     for i in range(n_pontos):
-
-        x_original = pd.to_numeric(df.iloc[:, 2 + 3*i], errors="coerce").values
-        y_original = pd.to_numeric(df.iloc[:, 2 + 3*i + 1], errors="coerce").values
-        z_original = pd.to_numeric(df.iloc[:, 2 + 3*i + 2], errors="coerce").values
-
-        x_zero = np.nanmean(x_original[idx_autozero])
-        y_zero = np.nanmean(y_original[idx_autozero])
-        z_zero = np.nanmean(z_original[idx_autozero])
-
-        x_autozero = x_original - x_zero
-        y_autozero = y_original - y_zero
-        z_autozero = z_original - z_zero
-
-        x_autozero = pd.Series(x_autozero).interpolate().bfill().ffill().values
-        y_autozero = pd.Series(y_autozero).interpolate().bfill().ffill().values
-        z_autozero = pd.Series(z_autozero).interpolate().bfill().ffill().values
+        x_proc = coordenadas_alinhadas[:, i, 0]
+        y_proc = coordenadas_alinhadas[:, i, 1]
 
         if usar_detrend:
-            x_proc = detrend(x_autozero)
-            y_proc = detrend(y_autozero)
-            z_proc = detrend(z_autozero)
-        else:
-            x_proc = x_autozero
-            y_proc = y_autozero
-            z_proc = z_autozero
+            x_proc = detrend(x_proc)
+            y_proc = detrend(y_proc)
 
         dx = np.diff(x_proc, prepend=x_proc[0])
         dy = np.diff(y_proc, prepend=y_proc[0])
-
         distancia_delta = np.sqrt(dx**2 + dy**2)
 
         normas[f"Pt{i}_norma"] = distancia_delta
         rms_pontos.append(np.sqrt(np.mean(distancia_delta**2)))
-
-        x_medios.append(np.nanmean(x_original))
-        y_medios.append(np.nanmean(y_original))
-        z_medios.append(np.nanmean(z_original))
 
     rms_df = pd.DataFrame({
         "ponto": [f"Pt{i}" for i in range(n_pontos)],
@@ -110,6 +179,12 @@ if arquivo is not None and arquivo_parametros is not None:
         "z_medio": z_medios,
         "RMS_distancia_delta": rms_pontos
     })
+
+    if usar_procrustes:
+        st.info(
+            "Os deslocamentos foram calculados após alinhamento de Procrustes 2D. "
+            "Os limites do arquivo Parameters.csv precisam ter sido obtidos com o mesmo processamento."
+        )
 
     st.subheader("Comparação normativa por amostras da distância euclidiana frame-a-frame")
 
@@ -407,7 +482,7 @@ if arquivo is not None and arquivo_parametros is not None:
                 "pois cada ponto possui limites próprios."
             )
 
-        y_label = "Distância euclidiana frame-a-frame após autozero + detrend"
+        y_label = "Distância euclidiana frame-a-frame após alinhamento de Procrustes" if usar_procrustes else "Distância euclidiana frame-a-frame"
 
         fig.update_layout(
             height=650,
