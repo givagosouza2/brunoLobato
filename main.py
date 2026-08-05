@@ -305,10 +305,39 @@ if arquivo is not None and arquivo_parametros is not None:
 
     st.subheader("Máscara colorida pelo estrato dominante acima do basal")
 
-    mostrar_numeros = st.checkbox("Mostrar número dos pontos", value=False)
+    col_rotulo1, col_rotulo2, col_rotulo3 = st.columns(3)
 
-    texto_pontos = [str(i) for i in range(n_pontos)] if mostrar_numeros else None
-    modo = "markers+text" if mostrar_numeros else "markers"
+    with col_rotulo1:
+        mostrar_numeros = st.checkbox("Mostrar número dos pontos", value=False)
+
+    with col_rotulo2:
+        mostrar_valores = st.checkbox("Mostrar valor RMS ao lado dos pontos", value=False)
+
+    with col_rotulo3:
+        casas_decimais = st.number_input(
+            "Casas decimais do valor",
+            min_value=2,
+            max_value=8,
+            value=5,
+            step=1,
+            disabled=not mostrar_valores
+        )
+
+    texto_pontos = []
+    for i, valor in enumerate(rms_df["RMS_distancia_delta"]):
+        partes = []
+
+        if mostrar_numeros:
+            partes.append(f"Pt{i}")
+
+        if mostrar_valores:
+            partes.append(f"{valor:.{int(casas_decimais)}f}")
+
+        texto_pontos.append(" | ".join(partes))
+
+    exibir_rotulos = mostrar_numeros or mostrar_valores
+    texto_pontos = texto_pontos if exibir_rotulos else None
+    modo = "markers+text" if exibir_rotulos else "markers"
 
     corescale_custom = [
         [0.00, "blue"],
