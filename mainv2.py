@@ -899,7 +899,7 @@ for i in range(n_pontos):
                 else tempo
             )
 
-            area_excesso = np.trapz(
+            area_excesso = np.trapezoid(
                 np.nan_to_num(excesso_z, nan=0.0),
                 x=tempo_seg[inicio:fim + 1]
             ) if fim > inicio else 0.0
