@@ -379,6 +379,80 @@ df = df.dropna(subset=[tempo_col]).reset_index(drop=True)
 
 tempo = df[tempo_col].astype(float).to_numpy()
 
+# ============================================================
+# SELEÇÃO DO INTERVALO DE INTERESSE
+# ============================================================
+
+st.subheader("Intervalo de interesse para análise")
+
+modo_recorte = st.radio(
+    "Definir intervalo por",
+    ["Tempo", "Frame"],
+    horizontal=True,
+    help=(
+        "Use este recorte para excluir artefatos no início ou no fim do vídeo. "
+        "Somente o intervalo escolhido será usado no Procrustes, no cálculo das "
+        "distâncias e na detecção de eventos."
+    )
+)
+
+if modo_recorte == "Tempo":
+    tempo_min = float(np.nanmin(tempo))
+    tempo_max = float(np.nanmax(tempo))
+
+    intervalo_tempo = st.slider(
+        "Intervalo de tempo",
+        min_value=tempo_min,
+        max_value=tempo_max,
+        value=(tempo_min, tempo_max),
+        step=max((tempo_max - tempo_min) / 1000.0, 1e-6)
+    )
+
+    mascara_intervalo = (
+        (tempo >= intervalo_tempo[0]) &
+        (tempo <= intervalo_tempo[1])
+    )
+
+else:
+    frame_vals = pd.to_numeric(df[frame_col], errors="coerce").to_numpy()
+    frame_validos = frame_vals[np.isfinite(frame_vals)]
+
+    if len(frame_validos) == 0:
+        st.error("A coluna de frame não contém valores numéricos válidos.")
+        st.stop()
+
+    frame_min = int(np.nanmin(frame_validos))
+    frame_max = int(np.nanmax(frame_validos))
+
+    intervalo_frame = st.slider(
+        "Intervalo de frames",
+        min_value=frame_min,
+        max_value=frame_max,
+        value=(frame_min, frame_max),
+        step=1
+    )
+
+    mascara_intervalo = (
+        (frame_vals >= intervalo_frame[0]) &
+        (frame_vals <= intervalo_frame[1])
+    )
+
+if np.sum(mascara_intervalo) < 3:
+    st.error(
+        "O intervalo selecionado possui menos de 3 amostras. "
+        "Escolha um trecho maior."
+    )
+    st.stop()
+
+# Aplica o recorte antes de qualquer análise.
+df = df.loc[mascara_intervalo].reset_index(drop=True)
+tempo = df[tempo_col].astype(float).to_numpy()
+
+st.caption(
+    f"Trecho analisado: {len(df)} amostras | "
+    f"tempo inicial = {tempo[0]:.3f} | tempo final = {tempo[-1]:.3f}"
+)
+
 coord_cols = df.columns[2:]
 
 if len(coord_cols) % 3 != 0:
@@ -553,6 +627,7 @@ janela_referencia = (
 )
 
 tempo_inicial = tempo[0]
+# A referência é construída dentro do intervalo de interesse já recortado.
 idx_referencia = tempo <= tempo_inicial + janela_referencia
 
 if np.sum(idx_referencia) < 2:
@@ -1606,8 +1681,13 @@ with st.expander("Como a detecção transitória funciona"):
 
     st.markdown(
         f"""
+### 0. Intervalo de interesse
+Antes de qualquer cálculo, o usuário pode restringir a análise por **tempo**
+ou **frame**. Apenas o trecho selecionado entra no processamento, permitindo
+excluir artefatos de gravação no início e no final do vídeo.
+
 ### 1. Alinhamento geométrico
-Cada frame é alinhado à face de referência por transformação de
+Cada frame do intervalo selecionado é alinhado à face de referência por transformação de
 similaridade 2D, removendo translação, rotação e escala global.
 
 ### 2. Movimento local
